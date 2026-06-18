@@ -10,8 +10,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DATA_PATH = "AI4LD_Tanzania/data/AI4LD_Simanjiro_396HH_Simulated_LossDamage_Dataset.xlsx"
-MODEL_DIR = "AI4LD_Tanzania/models"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DATA_PATH = os.path.join(
+    BASE_DIR,
+    "data",
+    "AI4LD_Simanjiro_396HH_Simulated_LossDamage_Dataset.xlsx"
+)
+
+MODEL_DIR = os.path.join(BASE_DIR, "models")
 
 households = pd.read_excel(DATA_PATH)
 household_count = len(households)
