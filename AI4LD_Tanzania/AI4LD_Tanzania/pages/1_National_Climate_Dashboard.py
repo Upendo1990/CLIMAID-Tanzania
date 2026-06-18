@@ -1,142 +1,113 @@
 import streamlit as st
-import geopandas as gpd
-import folium
-from streamlit_folium import st_folium
-import random
+import pandas as pd
+import joblib
+import matplotlib.pyplot as plt
 import os
 
 st.set_page_config(
-    page_title="National Climate Dashboard",
-    page_icon="",
+    page_title="Analytics and Explainability",
     layout="wide"
 )
 
-@st.cache_data
-def load_districts():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+st.title("Analytics and Explainability")
+st.subheader("Understanding Climate Loss and Damage Patterns")
 
-    shapefile_path = os.path.join(
-        base_dir,
-        "maps",
-        "tza_admbnda_adm2_20181019.shp"
-    )
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    gdf = gpd.read_file(shapefile_path)
-    gdf = gdf.to_crs(epsg=4326)
+DATA_PATH = os.path.join(
+    BASE_DIR,
+    "data",
+    "AI4LD_Simanjiro_396HH_Simulated_LossDamage_Dataset.xlsx"
+)
 
-    random.seed(42)
-    risk_levels = ["Low", "Moderate", "High", "Very High"]
-    gdf["Risk_Level"] = [random.choice(risk_levels) for _ in range(len(gdf))]
+FEATURES_PATH = os.path.join(BASE_DIR, "models", "AI4LD_LD_features.pkl")
+ECON_MODEL_PATH = os.path.join(BASE_DIR, "models", "AI4LD_economic_loss_model.pkl")
+NELD_MODEL_PATH = os.path.join(BASE_DIR, "models", "AI4LD_neld_model.pkl")
+VULN_MODEL_PATH = os.path.join(BASE_DIR, "models", "AI4LD_vulnerability_model.pkl")
 
-    return gdf
-
-
-districts = load_districts()
-
-st.title("National Climate Dashboard")
-st.subheader("Interactive Tanzania District Climate Risk Map")
+df = pd.read_excel(DATA_PATH)
 
 st.write(
-    "This dashboard visualizes Tanzania district boundaries and climate-risk categories. "
-    "The risk layer will be updated with operational drought indicators in future versions."
+    "This module explores household Loss and Damage patterns and explains which variables "
+    "are most important in the AI prediction models."
 )
-
-st.sidebar.header("Map Controls")
-
-regions = ["All Tanzania"] + sorted(districts["ADM1_EN"].dropna().unique())
-selected_region = st.sidebar.selectbox("Select Region", regions)
-
-risk_options = ["All", "Low", "Moderate", "High", "Very High"]
-selected_risk = st.sidebar.selectbox("Select Risk Level", risk_options)
-
-map_data = districts.copy()
-
-if selected_region != "All Tanzania":
-    map_data = map_data[map_data["ADM1_EN"] == selected_region]
-
-if selected_risk != "All":
-    map_data = map_data[map_data["Risk_Level"] == selected_risk]
-
-districts_list = ["All Districts"] + sorted(map_data["ADM2_EN"].dropna().unique())
-selected_district = st.sidebar.selectbox("Select District", districts_list)
-
-if selected_district != "All Districts":
-    map_data = map_data[map_data["ADM2_EN"] == selected_district]
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Regions", districts["ADM1_EN"].nunique())
-c2.metric("Districts", districts["ADM2_EN"].nunique())
-c3.metric("Selected Districts", len(map_data))
-c4.metric("Risk Layer", selected_risk)
 
-colors = {
-    "Low": "#2E7D32",
-    "Moderate": "#F9A825",
-    "High": "#ED6C02",
-    "Very High": "#B71C1C"
-}
-
-m = folium.Map(
-    location=[-6.3, 35.0],
-    zoom_start=6,
-    tiles="CartoDB positron"
-)
-
-def style_function(feature):
-    risk = feature["properties"].get("Risk_Level", "Low")
-    return {
-        "fillColor": colors.get(risk, "#CCCCCC"),
-        "color": "#0B3C5D",
-        "weight": 0.8,
-        "fillOpacity": 0.65,
-    }
-
-def highlight_function(feature):
-    return {
-        "fillColor": "#0B3C5D",
-        "color": "#000000",
-        "weight": 3,
-        "fillOpacity": 0.75,
-    }
-
-folium.GeoJson(
-    map_data,
-    name="Tanzania District Risk Layer",
-    style_function=style_function,
-    highlight_function=highlight_function,
-    tooltip=folium.GeoJsonTooltip(
-        fields=["ADM1_EN", "ADM2_EN", "ADM2_PCODE", "Risk_Level"],
-        aliases=["Region:", "District:", "District Code:", "Risk Level:"],
-        localize=True
-    )
-).add_to(m)
-
-folium.LayerControl().add_to(m)
-
-st_folium(m, height=700, width=1200)
+c1.metric("Households", len(df))
+c2.metric("Mean Economic Loss", f"TZS {df['Economic_Loss_TZS'].mean():,.0f}")
+c3.metric("Mean NELD Score", f"{df['NELD_Score_0to100'].mean():.1f}/100")
+c4.metric("High Vulnerability", (df["Vulnerability_Class"] == "High").sum())
 
 st.markdown("---")
-st.header("Selected Area Summary")
 
-if selected_district != "All Districts" and len(map_data) > 0:
-    row = map_data.iloc[0]
+st.header("Loss and Damage by Drought Class")
 
-    a, b, c, d = st.columns(4)
-    a.metric("Region", row["ADM1_EN"])
-    b.metric("District", row["ADM2_EN"])
-    c.metric("District Code", row["ADM2_PCODE"])
-    d.metric("Risk Level", row["Risk_Level"])
+summary = df.groupby("Drought_Class").agg(
+    Mean_Economic_Loss_TZS=("Economic_Loss_TZS", "mean"),
+    Mean_NELD_Score=("NELD_Score_0to100", "mean"),
+    Mean_Total_LD_Score=("Total_Loss_Damage_Score_0to100", "mean"),
+    Households=("Household_ID", "count")
+).reset_index()
+
+st.dataframe(summary, use_container_width=True)
+
+st.bar_chart(
+    summary.set_index("Drought_Class")[["Mean_Total_LD_Score"]]
+)
+
+st.header("Economic Loss Distribution")
+
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.hist(df["Economic_Loss_TZS"], bins=25)
+ax.set_xlabel("Economic Loss (TZS)")
+ax.set_ylabel("Number of Households")
+ax.set_title("Distribution of Economic Loss")
+st.pyplot(fig)
+
+st.header("Non-Economic Loss and Damage by Vulnerability Class")
+
+neld_summary = df.groupby("Vulnerability_Class")["NELD_Score_0to100"].mean().reset_index()
+st.bar_chart(neld_summary.set_index("Vulnerability_Class"))
+
+st.header("AI Model Feature Importance")
+
+model_choice = st.selectbox(
+    "Select AI model",
+    [
+        "Economic Loss Model",
+        "NELD Model",
+        "Vulnerability Model"
+    ]
+)
+
+features = joblib.load(FEATURES_PATH)
+
+if model_choice == "Economic Loss Model":
+    model = joblib.load(ECON_MODEL_PATH)
+elif model_choice == "NELD Model":
+    model = joblib.load(NELD_MODEL_PATH)
 else:
-    st.info("Select a specific district from the sidebar to view district-level details.")
+    model = joblib.load(VULN_MODEL_PATH)
 
-st.markdown("## Risk Legend")
+importance = pd.DataFrame({
+    "Feature": features,
+    "Importance": model.feature_importances_
+}).sort_values("Importance", ascending=False)
 
-l1, l2, l3, l4 = st.columns(4)
-l1.success("Low")
-l2.warning("Moderate")
-l3.warning("High")
-l4.error("Very High")
+st.dataframe(importance, use_container_width=True)
 
-st.caption(
-    "Boundary source: Tanzania administrative level 2 boundaries from OCHA/HDX COD-AB."
+fig2, ax2 = plt.subplots(figsize=(8, 5))
+ax2.barh(importance["Feature"].head(12), importance["Importance"].head(12))
+ax2.invert_yaxis()
+ax2.set_xlabel("Importance")
+ax2.set_title(f"Top Feature Importance: {model_choice}")
+st.pyplot(fig2)
+
+st.header("Interpretation")
+
+st.info(
+    "The analytics module helps users understand how drought severity, rainfall, vegetation condition, "
+    "livestock loss, water scarcity, pasture shortage, and household characteristics contribute to "
+    "economic and non-economic Loss and Damage."
 )
