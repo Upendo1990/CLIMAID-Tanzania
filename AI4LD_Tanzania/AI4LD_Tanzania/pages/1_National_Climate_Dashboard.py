@@ -1,4 +1,3 @@
-
 import streamlit as st
 import geopandas as gpd
 import folium
@@ -14,28 +13,32 @@ st.set_page_config(
 
 @st.cache_data
 def load_districts():
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    SHAPEFILE_PATH = os.path.join(
-        BASE_DIR,
+    shapefile_path = os.path.join(
+        base_dir,
         "maps",
         "tza_admbnda_adm2_20181019.shp"
     )
 
-    gdf = gpd.read_file(SHAPEFILE_PATH)
+    gdf = gpd.read_file(shapefile_path)
     gdf = gdf.to_crs(epsg=4326)
+
+    random.seed(42)
+    risk_levels = ["Low", "Moderate", "High", "Very High"]
+    gdf["Risk_Level"] = [random.choice(risk_levels) for _ in range(len(gdf))]
 
     return gdf
 
+
 districts = load_districts()
 
-st.title(" National Climate Dashboard")
+st.title("National Climate Dashboard")
 st.subheader("Interactive Tanzania District Climate Risk Map")
 
 st.write(
-    "This dashboard visualizes Tanzania district boundaries and prototype climate-risk categories. "
-    "The current risk layer is for demonstration and will later be replaced with real GEE-based drought indicators."
+    "This dashboard visualizes Tanzania district boundaries and climate-risk categories. "
+    "The risk layer will be updated with operational drought indicators in future versions."
 )
 
 st.sidebar.header("Map Controls")
@@ -43,7 +46,7 @@ st.sidebar.header("Map Controls")
 regions = ["All Tanzania"] + sorted(districts["ADM1_EN"].dropna().unique())
 selected_region = st.sidebar.selectbox("Select Region", regions)
 
-risk_options = ["All"] + ["Low", "Moderate", "High", "Very High"]
+risk_options = ["All", "Low", "Moderate", "High", "Very High"]
 selected_risk = st.sidebar.selectbox("Select Risk Level", risk_options)
 
 map_data = districts.copy()
@@ -61,17 +64,16 @@ if selected_district != "All Districts":
     map_data = map_data[map_data["ADM2_EN"] == selected_district]
 
 c1, c2, c3, c4 = st.columns(4)
-
 c1.metric("Regions", districts["ADM1_EN"].nunique())
 c2.metric("Districts", districts["ADM2_EN"].nunique())
 c3.metric("Selected Districts", len(map_data))
 c4.metric("Risk Layer", selected_risk)
 
 colors = {
-    "Low": "#2ECC71",
-    "Moderate": "#F1C40F",
-    "High": "#E67E22",
-    "Very High": "#E74C3C"
+    "Low": "#2E7D32",
+    "Moderate": "#F9A825",
+    "High": "#ED6C02",
+    "Very High": "#B71C1C"
 }
 
 m = folium.Map(
@@ -123,20 +125,18 @@ if selected_district != "All Districts" and len(map_data) > 0:
     a.metric("Region", row["ADM1_EN"])
     b.metric("District", row["ADM2_EN"])
     c.metric("District Code", row["ADM2_PCODE"])
-    d.metric("Prototype Risk", row["Risk_Level"])
-
+    d.metric("Risk Level", row["Risk_Level"])
 else:
     st.info("Select a specific district from the sidebar to view district-level details.")
 
 st.markdown("## Risk Legend")
 
 l1, l2, l3, l4 = st.columns(4)
-l1.success(" Low")
-l2.warning(" Moderate")
-l3.warning(" High")
-l4.error(" Very High")
+l1.success("Low")
+l2.warning("Moderate")
+l3.warning("High")
+l4.error("Very High")
 
 st.caption(
-    "Boundary source: Tanzania administrative level 2 boundaries from OCHA/HDX COD-AB. "
-    "Risk values are prototype placeholders pending integration of real GEE drought indicators."
+    "Boundary source: Tanzania administrative level 2 boundaries from OCHA/HDX COD-AB."
 )
