@@ -4,6 +4,7 @@ import geopandas as gpd
 import folium
 from streamlit_folium import st_folium
 import random
+import os
 
 st.set_page_config(
     page_title="National Climate Dashboard",
@@ -13,12 +14,17 @@ st.set_page_config(
 
 @st.cache_data
 def load_districts():
-    gdf = gpd.read_file("AI4LD_Tanzania/maps/tza_admbnda_adm2_20181019.shp")
-    gdf = gdf.to_crs(epsg=4326)
 
-    random.seed(42)
-    risk_levels = ["Low", "Moderate", "High", "Very High"]
-    gdf["Risk_Level"] = [random.choice(risk_levels) for _ in range(len(gdf))]
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    SHAPEFILE_PATH = os.path.join(
+        BASE_DIR,
+        "maps",
+        "tza_admbnda_adm2_20181019.shp"
+    )
+
+    gdf = gpd.read_file(SHAPEFILE_PATH)
+    gdf = gdf.to_crs(epsg=4326)
 
     return gdf
 
